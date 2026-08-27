@@ -4,16 +4,21 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/useAuth';
+import AuthGate from '../lib/AuthGate';
 
 export default function HomePage() {
   return (
-    <Suspense fallback={<div className="wrap">Loading…</div>}>
-      <HomePageInner />
-    </Suspense>
+    <AuthGate>
+      <Suspense fallback={<div className="wrap">Loading…</div>}>
+        <HomePageInner />
+      </Suspense>
+    </AuthGate>
   );
 }
 
 function HomePageInner() {
+  const { email } = useAuth();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState(searchParams.get('tab') === 'universities' ? 'universities' : 'programs');
   const [universities, setUniversities] = useState([]);
@@ -43,7 +48,8 @@ function HomePageInner() {
       <nav className="nav">
         <Link href="/">Home</Link>
         <div className="spacer" />
-        <Link href="/admin">Admin</Link>
+        <span className="who">{email}</span>
+        <button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </nav>
       <div className="wrap">
         <h1>Malaysia University &amp; Program Explorer</h1>

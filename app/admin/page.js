@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/useAuth';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function AdminPage() {
-  const { session, loading, isAdmin, email } = useAuth();
+  const router = useRouter();
+  const { session, loading, role, isEditor, isAdmin, email } = useAuth();
   const [tab, setTab] = useState('universities');
 
   if (loading) {
@@ -17,21 +19,22 @@ export default function AdminPage() {
     return (
       <div className="wrap">
         <h1>Admin</h1>
-        <p>You need to sign in to make changes.</p>
-        <Link className="btn btn-primary" href="/admin/login">Sign in</Link>
+        <p>You need to sign in to reach the admin panel.</p>
+        <Link className="btn btn-primary" href="/login">Sign in</Link>
       </div>
     );
   }
 
-  if (!isAdmin) {
+  if (!isEditor) {
     return (
       <div className="wrap">
         <h1>Admin</h1>
         <p>
-          You&apos;re signed in as <b>{email}</b>, but this email isn&apos;t on the
-          admin allowlist yet. Ask an existing admin to add it in Supabase
-          (Table Editor → <code>admins</code> → Insert row).
+          You&apos;re signed in as <b>{email}</b> ({role || 'no access'}), but
+          this account doesn&apos;t have edit permissions. Ask an admin to
+          upgrade your role if you should have them.
         </p>
+        <button className="btn" onClick={() => router.push('/')} style={{ marginRight: 8 }}>&larr; Back</button>
         <button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </div>
     );
@@ -40,9 +43,9 @@ export default function AdminPage() {
   return (
     <div>
       <nav className="nav">
-        <Link href="/">Home</Link>
+        <button className="btn" onClick={() => router.push('/')}>&larr; Back</button>
         <div className="spacer" />
-        <span className="who">Signed in as {email}</span>
+        <span className="who">{email} · {role}</span>
         <button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </nav>
       <div className="wrap">
@@ -51,10 +54,176 @@ export default function AdminPage() {
         <div className="tabs">
           <button className={`tab-btn ${tab === 'universities' ? 'active' : ''}`} onClick={() => setTab('universities')}>Universities</button>
           <button className={`tab-btn ${tab === 'programs' ? 'active' : ''}`} onClick={() => setTab('programs')}>Programs</button>
+          {isAdmin && <button className={`tab-btn ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>Users</button>}
+          {isAdmin && <button className={`tab-btn ${tab === 'activity' ? 'active' : ''}`} onClick={() => setTab('activity')}>Activity Log</button>}
         </div>
         {tab === 'universities' && <UniversitiesAdmin />}
         {tab === 'programs' && <ProgramsAdmin />}
+        {tab === 'users' && isAdmin && <UsersAdmin />}
+        {tab === 'activity' && isAdmin && <ActivityLog />}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Users (admin only) — create accounts, change roles, revoke access
+// ─────────────────────────────────────────────
+
+function UsersAdmin() {
+  const [profiles, setProfiles] = useState([]);
+  const [status, setStatus] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('viewer');
+
+  async function refresh() {
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (!error) setProfiles(data);
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function createUser(e) {
+    e.preventDefault();
+    setStatus(null);
+    setCreating(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ email: newEmail, password: newPassword, role: newRole }),
+    });
+    const body = await res.json();
+    setCreating(false);
+    if (!res.ok) { setStatus({ type: 'err', msg: body.error || 'Failed to create user.' }); return; }
+    setStatus({ type: 'ok', msg: `Created ${newEmail} as ${newRole}.` });
+    setNewEmail(''); setNewPassword(''); setNewRole('viewer');
+    refresh();
+  }
+
+  async function changeRole(profileEmail, role) {
+    const { error } = await supabase.from('profiles').update({ role }).eq('email', profileEmail);
+    if (error) { setStatus({ type: 'err', msg: error.message }); return; }
+    refresh();
+  }
+
+  async function revoke(profileEmail) {
+    if (!confirm(`Remove site access for ${profileEmail}? Their login still exists, but they won't be able to view or edit anything until re-added.`)) return;
+    const { error } = await supabase.from('profiles').delete().eq('email', profileEmail);
+    if (error) { setStatus({ type: 'err', msg: error.message }); return; }
+    refresh();
+  }
+
+  return (
+    <div>
+      <div className="section">
+        <h3>Add a new user</h3>
+        <form onSubmit={createUser}>
+          <div className="form-row">
+            <label>Email</label>
+            <input type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </div>
+          <div className="form-row">
+            <label>Temporary password (share with them securely)</label>
+            <input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="e.g. a random phrase" />
+          </div>
+          <div className="form-row">
+            <label>Role</label>
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ width: '100%' }}>
+              <option value="viewer">Viewer — can view the site only</option>
+              <option value="editor">Editor — can also add/edit/delete data</option>
+              <option value="admin">Admin — full access, manages users too</option>
+            </select>
+          </div>
+          {status && <div className={status.type === 'err' ? 'err' : 'ok'}>{status.msg}</div>}
+          <button className="btn btn-primary" type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create user'}</button>
+        </form>
+      </div>
+
+      <table className="admin-table">
+        <thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead>
+        <tbody>
+          {profiles.map((p) => (
+            <tr key={p.email}>
+              <td>{p.email}</td>
+              <td>
+                <select value={p.role} onChange={(e) => changeRole(p.email, e.target.value)}>
+                  <option value="viewer">viewer</option>
+                  <option value="editor">editor</option>
+                  <option value="admin">admin</option>
+                </select>
+              </td>
+              <td>{new Date(p.created_at).toLocaleDateString()}</td>
+              <td><button className="btn btn-danger" onClick={() => revoke(p.email)}>Revoke</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Activity Log (admin only) — logins + data edits
+// ─────────────────────────────────────────────
+
+function ActivityLog() {
+  const [view, setView] = useState('logins');
+  const [logins, setLogins] = useState([]);
+  const [edits, setEdits] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [loginRes, editRes] = await Promise.all([
+        supabase.from('login_log').select('*').order('logged_in_at', { ascending: false }).limit(200),
+        supabase.from('edit_log').select('*').order('changed_at', { ascending: false }).limit(200),
+      ]);
+      if (!loginRes.error) setLogins(loginRes.data);
+      if (!editRes.error) setEdits(editRes.data);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  function describeEdit(row) {
+    const name = row.new_data?.name || row.new_data?.program || row.old_data?.name || row.old_data?.program || row.record_id;
+    return `${row.action} on ${row.table_name} — ${name}`;
+  }
+
+  return (
+    <div>
+      <div className="tabs">
+        <button className={`tab-btn ${view === 'logins' ? 'active' : ''}`} onClick={() => setView('logins')}>Logins</button>
+        <button className={`tab-btn ${view === 'edits' ? 'active' : ''}`} onClick={() => setView('edits')}>Data edits</button>
+      </div>
+      {loading && <div className="count">Loading…</div>}
+      {!loading && view === 'logins' && (
+        <table className="admin-table">
+          <thead><tr><th>Email</th><th>When</th></tr></thead>
+          <tbody>
+            {logins.map((l) => (
+              <tr key={l.id}><td>{l.email}</td><td>{new Date(l.logged_in_at).toLocaleString()}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!loading && view === 'edits' && (
+        <table className="admin-table">
+          <thead><tr><th>What</th><th>By</th><th>When</th></tr></thead>
+          <tbody>
+            {edits.map((e) => (
+              <tr key={e.id}><td>{describeEdit(e)}</td><td>{e.changed_by}</td><td>{new Date(e.changed_at).toLocaleString()}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

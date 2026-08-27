@@ -4,8 +4,17 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
+import AuthGate from '../../../lib/AuthGate';
 
 export default function UniversityProfilePage() {
+  return (
+    <AuthGate>
+      <UniversityProfileInner />
+    </AuthGate>
+  );
+}
+
+function UniversityProfileInner() {
   const { slug } = useParams();
   const [uni, setUni] = useState(null);
   const [programCount, setProgramCount] = useState(0);
@@ -50,8 +59,6 @@ export default function UniversityProfilePage() {
     <div>
       <nav className="nav">
         <Link href="/">Home</Link>
-        <div className="spacer" />
-        <Link href="/admin">Admin</Link>
       </nav>
       <div className="wrap">
         <Link href="/" className="btn" style={{ display: 'inline-block', marginBottom: 12, textDecoration: 'none' }}>
