@@ -66,5 +66,3 @@ npm run dev
 
 Deploys automatically on push to `main` via Vercel. Database changes go
 through Supabase's SQL Editor, not migrations run at build time.
-
-## Project structure
