@@ -37,3 +37,34 @@ every data change is automatically logged and viewable under `/admin` →
 full copy of the original dataset in plain text — keep the repo private.
 
 ## Project structure
+
+app/
+page.js Search — programs & universities (login required)
+university/[slug]/page.js University profile page
+login/page.js General sign-in (email + password)
+admin/page.js Dashboard: universities, programs, users, activity log
+api/admin/users/route.js Server-side endpoint that creates new accounts
+lib/
+supabaseClient.js Browser Supabase client
+useAuth.js Session + role lookup
+AuthGate.js Wraps pages that require login
+ThemeToggle.js Light/dark mode toggle
+supabase/
+schema.sql Base schema
+migration_2_access_control.sql Roles, view-gating, audit logs
+scripts/
+seed.mjs + seed_*.json One-time data loader
+
+
+## Local setup
+
+```bash
+npm install
+cp .env.local.example .env.local   # fill in your Supabase URL + keys
+npm run dev
+```
+
+Deploys automatically on push to `main` via Vercel. Database changes go
+through Supabase's SQL Editor, not migrations run at build time.
+
+## Project structure
