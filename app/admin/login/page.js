@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 
 export default function AdminLoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -14,15 +16,13 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/admin` : undefined,
-      },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError(error.message);
-    else setSent(true);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    router.push('/admin');
   }
 
   return (
@@ -33,32 +33,36 @@ export default function AdminLoginPage() {
       <div className="wrap" style={{ maxWidth: 420 }}>
         <h1>Admin sign-in</h1>
         <div className="sub">
-          Enter your email and we&apos;ll send you a one-time sign-in link. Only
-          emails on the admin allowlist can make changes once signed in.
+          Sign in with the email and password an existing admin set up for you.
+          Only emails on the admin allowlist can make changes once signed in.
         </div>
 
-        {sent ? (
-          <div className="ok">
-            Check {email} for a sign-in link. Open it on this device to finish signing in.
+        <form onSubmit={handleSubmit}>
+          <div className="form-row">
+            <label>Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
           </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label>Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </div>
-            {error && <div className="err">{error}</div>}
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? 'Sending…' : 'Send sign-in link'}
-            </button>
-          </form>
-        )}
+          <div className="form-row">
+            <label>Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+          {error && <div className="err">{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
       </div>
     </div>
   );
